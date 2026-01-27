@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Playlistor - Spotify Playlist Time Sequencer</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>🎵 Playlistor</h1>
+            <p class="subtitle">Sequence Spotify playlists with time-anchored songs</p>
+            <div id="auth-status">
+                <button id="login-btn" class="btn btn-primary" style="display: none;">Login with Spotify</button>
+                <span id="auth-indicator" class="auth-indicator"></span>
+            </div>
+        </header>
+
+        <main>
+            <!-- Step 1: Load Playlist -->
+            <section class="card">
+                <h2>1. Load Playlist</h2>
+                <div class="input-group">
+                    <input type="text" id="playlist-id" placeholder="Enter Spotify Playlist ID (e.g., 2PNI5NdD3372si8LuR7guq)">
+                    <button id="fetch-btn" class="btn btn-primary">Fetch Playlist</button>
+                </div>
+                <div id="playlist-info" class="playlist-info" style="display: none;">
+                    <h3 id="playlist-name"></h3>
+                    <p><span id="track-count"></span> tracks loaded</p>
+                </div>
+            </section>
+
+            <!-- Step 2: Add Anchors -->
+            <section class="card">
+                <h2>2. Add Anchor Songs</h2>
+                <p class="help-text">Specify songs to play at exact times. First anchor is from playlist start, others are relative to previous anchor.</p>
+                
+                <div class="anchor-form">
+                    <input type="text" id="anchor-song-name" placeholder="Song name (must match exactly)">
+                    <div class="time-inputs">
+                        <input type="number" id="anchor-hours" min="0" placeholder="Hours" value="0">
+                        <span>:</span>
+                        <input type="number" id="anchor-minutes" min="0" max="59" placeholder="Minutes" value="0">
+                        <span>:</span>
+                        <input type="number" id="anchor-seconds" min="0" max="59" placeholder="Seconds" value="0">
+                    </div>
+                    <button id="add-anchor-btn" class="btn btn-secondary">Add Anchor</button>
+                </div>
+
+                <div id="anchors-list" class="anchors-list"></div>
+
+                <div class="action-group">
+                    <button id="sequence-btn" class="btn btn-primary" disabled>Generate Sequence</button>
+                    <button id="clear-anchors-btn" class="btn btn-secondary">Clear Anchors</button>
+                </div>
+            </section>
+
+            <!-- Step 3: Review & Edit Sequence -->
+            <section class="card">
+                <h2>3. Review & Edit Sequence</h2>
+                <p class="help-text">Drag tracks to reorder. Anchor songs are highlighted.</p>
+                
+                <div id="sequence-container" style="display: none;">
+                    <div class="sequence-stats">
+                        <span>Total Duration: <strong id="total-duration">0:00:00</strong></span>
+                        <button id="reshuffle-btn" class="btn btn-secondary">Re-shuffle Gaps</button>
+                    </div>
+                    
+                    <div id="tracks-list" class="tracks-list"></div>
+                </div>
+
+                <div id="sequence-placeholder" class="placeholder">
+                    Generate a sequence to see tracks here
+                </div>
+            </section>
+
+            <!-- Step 4: Upload to Spotify -->
+            <section class="card">
+                <h2>4. Upload to Spotify</h2>
+                <div class="input-group">
+                    <input type="text" id="new-playlist-name" placeholder="New playlist name">
+                    <button id="upload-btn" class="btn btn-success" disabled>Create Playlist</button>
+                </div>
+                <div id="upload-result" class="upload-result" style="display: none;"></div>
+            </section>
+        </main>
+
+        <footer>
+            <p>Made with ❤️ for music lovers | Data auto-saved</p>
+        </footer>
+    </div>
+
+    <!-- Error Toast -->
+    <div id="error-toast" class="toast error-toast" style="display: none;"></div>
+    <div id="success-toast" class="toast success-toast" style="display: none;"></div>
+
+    <script src="{{ url_for('static', filename='app.js') }}"></script>
+</body>
+</html>

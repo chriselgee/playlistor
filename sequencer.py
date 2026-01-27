@@ -1,0 +1,173 @@
+"""
+Time-sequencing algorithm for playlist generation.
+Places anchor songs at specified time offsets and fills gaps with remaining tracks.
+"""
+import random
+from typing import List, Dict, Any, Tuple
+
+
+class SequencerError(Exception):
+    """Custom exception for sequencing errors."""
+    pass
+
+
+class PlaylistSequencer:
+    TOLERANCE_SECONDS = 5  # ±5 seconds tolerance
+    
+    def __init__(self, tracks: List[Dict[str, Any]]):
+        """
+        Initialize sequencer with source tracks.
+        
+        Args:
+            tracks: List of track dictionaries from Spotify
+        """
+        self.source_tracks = tracks.copy()
+        self.available_tracks = tracks.copy()
+    
+    def sequence_playlist(self, anchors: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        """
+        Create a sequenced playlist with anchor songs at specified time offsets.
+        
+        Args:
+            anchors: List of anchor specifications:
+                [
+                    {"song_name": str, "time_offset_seconds": int},
+                    ...
+                ]
+                First anchor time is absolute from start.
+                Subsequent anchors are relative to previous anchor.
+        
+        Returns:
+            List of tracks in sequence with metadata
+            
+        Raises:
+            SequencerError: If anchor song not found or timing impossible
+        """
+        if not anchors:
+            # No anchors, return shuffled tracks
+            result = self.source_tracks.copy()
+            random.shuffle(result)
+            return self._add_metadata(result)
+        
+        # Reset available tracks
+        self.available_tracks = self.source_tracks.copy()
+        
+        # Find and reserve anchor tracks
+        anchor_tracks = []
+        for i, anchor_spec in enumerate(anchors):
+            track = self._find_and_remove_track(anchor_spec['song_name'])
+            if not track:
+                raise SequencerError(f"Anchor song '{anchor_spec['song_name']}' not found in playlist")
+            
+            # Calculate absolute time offset
+            if i == 0:
+                # First anchor: time from playlist start
+                absolute_time = anchor_spec['time_offset_seconds']
+            else:
+                # Subsequent anchors: relative to previous anchor start time
+                absolute_time = anchor_tracks[-1]['absolute_start_time'] + anchor_spec['time_offset_seconds']
+            
+            anchor_tracks.append({
+                'track': track,
+                'absolute_start_time': absolute_time,
+                'specification': anchor_spec
+            })
+        
+        # Build sequenced playlist
+        sequenced = []
+        current_time = 0
+        
+        for i, anchor_info in enumerate(anchor_tracks):
+            target_time = anchor_info['absolute_start_time']
+            anchor_track = anchor_info['track']
+            
+            # Fill gap before this anchor
+            gap_duration = target_time - current_time
+            if gap_duration < 0:
+                raise SequencerError(
+                    f"Impossible timing: anchor '{anchor_track['name']}' at {target_time}s "
+                    f"but previous section ends at {current_time}s"
+                )
+            
+            if gap_duration > 0:
+                filler_tracks, actual_duration = self._fill_gap(gap_duration)
+                sequenced.extend(filler_tracks)
+                current_time += actual_duration
+            
+            # Check timing tolerance
+            time_diff = abs(current_time - target_time)
+            if time_diff > self.TOLERANCE_SECONDS:
+                raise SequencerError(
+                    f"Cannot place anchor '{anchor_track['name']}' at {target_time}s "
+                    f"(would be at {current_time}s, exceeds ±{self.TOLERANCE_SECONDS}s tolerance)"
+                )
+            
+            # Add anchor track
+            sequenced.append(anchor_track)
+            current_time = target_time + (anchor_track['duration_ms'] / 1000)
+        
+        # Add remaining tracks after last anchor
+        if self.available_tracks:
+            random.shuffle(self.available_tracks)
+            sequenced.extend(self.available_tracks)
+        
+        return self._add_metadata(sequenced)
+    
+    def _find_and_remove_track(self, song_name: str) -> Dict[str, Any]:
+        """Find a track by name and remove it from available tracks."""
+        song_name_lower = song_name.lower().strip()
+        
+        for i, track in enumerate(self.available_tracks):
+            if track['name'].lower().strip() == song_name_lower:
+                return self.available_tracks.pop(i)
+        
+        return None
+    
+    def _fill_gap(self, target_duration_seconds: float) -> Tuple[List[Dict[str, Any]], float]:
+        """
+        Fill a time gap with random tracks.
+        
+        Args:
+            target_duration_seconds: Desired duration in seconds
+            
+        Returns:
+            Tuple of (list of tracks, actual duration in seconds)
+        """
+        if not self.available_tracks:
+            return [], 0.0
+        
+        selected = []
+        total_duration = 0.0
+        target_duration_ms = target_duration_seconds * 1000
+        
+        # Shuffle available tracks
+        random.shuffle(self.available_tracks)
+        
+        # Greedily fill the gap
+        while self.available_tracks and total_duration < target_duration_ms:
+            track = self.available_tracks.pop(0)
+            
+            # Check if adding this track would exceed target by more than tolerance
+            new_total = total_duration + track['duration_ms']
+            if new_total <= target_duration_ms + (self.TOLERANCE_SECONDS * 1000):
+                selected.append(track)
+                total_duration = new_total
+            else:
+                # Would exceed tolerance, put track back for later
+                self.available_tracks.append(track)
+                break
+        
+        return selected, total_duration / 1000
+    
+    def _add_metadata(self, tracks: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        """Add cumulative time metadata to tracks."""
+        cumulative_time = 0
+        result = []
+        
+        for track in tracks:
+            track_with_meta = track.copy()
+            track_with_meta['cumulative_start_time'] = cumulative_time
+            cumulative_time += track['duration_ms'] / 1000
+            result.append(track_with_meta)
+        
+        return result
