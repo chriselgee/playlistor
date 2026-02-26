@@ -13,7 +13,31 @@
             <p class="subtitle">Sequence Spotify playlists with time-anchored songs</p>
             <div id="auth-status">
                 <button id="login-btn" class="btn btn-primary" style="display: none;">Login with Spotify</button>
+                <button id="disconnect-btn" class="btn btn-secondary btn-sm" style="display: none;">Disconnect</button>
                 <span id="auth-indicator" class="auth-indicator"></span>
+            </div>
+            <div id="alt-auth" class="alt-auth" style="display: none;">
+                <button id="toggle-alt-auth" class="btn-link">Or use session cookie / token instead</button>
+                <div id="alt-auth-panel" class="alt-auth-panel" style="display: none;">
+                    <div class="alt-auth-tab-btns">
+                        <button class="alt-auth-tab-btn active" data-tab="token">Access Token (recommended)</button>
+                        <button class="alt-auth-tab-btn" data-tab="cookie">sp_dc Cookie</button>
+                    </div>
+                    <div id="tab-token" class="alt-auth-tab active">
+                        <p class="help-text"><strong>Easiest method:</strong> Open <a href="https://open.spotify.com/get_access_token?reason=transport&amp;productType=web-player" target="_blank" style="color: #a0c4ff;">this link</a> in a browser where you&rsquo;re logged into Spotify, then copy the <code>accessToken</code> value from the JSON.</p>
+                        <div class="input-group">
+                            <input type="text" id="token-input" placeholder="Paste access token here">
+                            <button id="token-auth-btn" class="btn btn-primary">Connect</button>
+                        </div>
+                    </div>
+                    <div id="tab-cookie" class="alt-auth-tab" style="display: none;">
+                        <p class="help-text">Open <strong>open.spotify.com</strong> &rarr; DevTools (F12) &rarr; Application &rarr; Cookies &rarr; copy the <code>sp_dc</code> value. <em>Note: may not work in all environments.</em></p>
+                        <div class="input-group">
+                            <input type="text" id="sp-dc-input" placeholder="Paste sp_dc cookie value">
+                            <button id="cookie-auth-btn" class="btn btn-primary">Connect</button>
+                        </div>
+                    </div>
+                </div>
             </div>
         </header>
 

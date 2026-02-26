@@ -6,7 +6,15 @@ let sequencedTracks = [];
 
 // DOM Elements
 const loginBtn = document.getElementById('login-btn');
+const disconnectBtn = document.getElementById('disconnect-btn');
 const authIndicator = document.getElementById('auth-indicator');
+const altAuth = document.getElementById('alt-auth');
+const toggleAltAuth = document.getElementById('toggle-alt-auth');
+const altAuthPanel = document.getElementById('alt-auth-panel');
+const spDcInput = document.getElementById('sp-dc-input');
+const cookieAuthBtn = document.getElementById('cookie-auth-btn');
+const tokenInput = document.getElementById('token-input');
+const tokenAuthBtn = document.getElementById('token-auth-btn');
 const playlistIdInput = document.getElementById('playlist-id');
 const fetchBtn = document.getElementById('fetch-btn');
 const playlistInfo = document.getElementById('playlist-info');
@@ -47,6 +55,31 @@ function setupEventListeners() {
         window.location.href = '/auth/login';
     });
 
+    disconnectBtn.addEventListener('click', disconnect);
+
+    // Alt auth: toggle panel
+    toggleAltAuth.addEventListener('click', () => {
+        const panel = altAuthPanel;
+        panel.style.display = panel.style.display === 'none' ? 'block' : 'none';
+    });
+
+    // Alt auth: tab switching
+    document.querySelectorAll('.alt-auth-tab-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+            document.querySelectorAll('.alt-auth-tab-btn').forEach(b => b.classList.remove('active'));
+            document.querySelectorAll('.alt-auth-tab').forEach(t => { t.style.display = 'none'; t.classList.remove('active'); });
+            btn.classList.add('active');
+            const tab = document.getElementById('tab-' + btn.dataset.tab);
+            tab.style.display = 'block';
+            tab.classList.add('active');
+        });
+    });
+
+    // Alt auth: cookie connect
+    cookieAuthBtn.addEventListener('click', connectWithCookie);
+    // Alt auth: token connect
+    tokenAuthBtn.addEventListener('click', connectWithToken);
+
     fetchBtn.addEventListener('click', fetchPlaylist);
     
     addAnchorBtn.addEventListener('click', addAnchor);
@@ -63,16 +96,110 @@ async function checkAuthStatus() {
         const data = await response.json();
         
         if (data.authenticated) {
-            authIndicator.textContent = '✓ Connected to Spotify';
+            const labels = { oauth: 'OAuth', cookie: 'Cookie', token: 'Token' };
+            const methodLabel = labels[data.method] || data.method;
+            authIndicator.textContent = `\u2713 Connected via ${methodLabel}`;
             authIndicator.style.background = 'rgba(72, 187, 120, 0.8)';
             loginBtn.style.display = 'none';
+            disconnectBtn.style.display = 'inline-block';
+            altAuth.style.display = 'none';
         } else {
-            authIndicator.textContent = '⚠ Not connected';
+            authIndicator.textContent = '\u26A0 Not connected';
             authIndicator.style.background = 'rgba(252, 129, 129, 0.8)';
-            loginBtn.style.display = 'inline-block';
+            disconnectBtn.style.display = 'none';
+            // Show OAuth button only if OAuth is configured
+            if (data.oauth_available) {
+                loginBtn.style.display = 'inline-block';
+            }
+            altAuth.style.display = 'block';
         }
     } catch (error) {
         console.error('Auth check failed:', error);
+    }
+}
+
+async function connectWithCookie() {
+    const spDc = spDcInput.value.trim();
+    if (!spDc) {
+        showError('Please paste your sp_dc cookie value');
+        return;
+    }
+
+    try {
+        cookieAuthBtn.disabled = true;
+        cookieAuthBtn.textContent = 'Connecting...';
+
+        const response = await fetch('/auth/cookie', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ sp_dc: spDc })
+        });
+
+        const data = await response.json();
+
+        if (!response.ok) {
+            throw new Error(data.error || 'Cookie auth failed');
+        }
+
+        showSuccess('Connected via sp_dc cookie!');
+        spDcInput.value = '';
+        altAuthPanel.style.display = 'none';
+        await checkAuthStatus();
+    } catch (error) {
+        showError(error.message);
+    } finally {
+        cookieAuthBtn.disabled = false;
+        cookieAuthBtn.textContent = 'Connect';
+    }
+}
+
+async function connectWithToken() {
+    let token = tokenInput.value.trim();
+    if (!token) {
+        showError('Please paste your access token');
+        return;
+    }
+
+    // Strip "Bearer " prefix if user pasted the full header value
+    if (token.toLowerCase().startsWith('bearer ')) {
+        token = token.substring(7).trim();
+    }
+
+    try {
+        tokenAuthBtn.disabled = true;
+        tokenAuthBtn.textContent = 'Connecting...';
+
+        const response = await fetch('/auth/token', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ access_token: token })
+        });
+
+        const data = await response.json();
+
+        if (!response.ok) {
+            throw new Error(data.error || 'Token auth failed');
+        }
+
+        showSuccess('Connected via access token!');
+        tokenInput.value = '';
+        altAuthPanel.style.display = 'none';
+        await checkAuthStatus();
+    } catch (error) {
+        showError(error.message);
+    } finally {
+        tokenAuthBtn.disabled = false;
+        tokenAuthBtn.textContent = 'Connect';
+    }
+}
+
+async function disconnect() {
+    try {
+        await fetch('/auth/logout', { method: 'POST' });
+        showSuccess('Disconnected');
+        await checkAuthStatus();
+    } catch (error) {
+        showError('Failed to disconnect');
     }
 }
 

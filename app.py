@@ -2,6 +2,7 @@
 Flask web application for Spotify playlist time sequencing.
 """
 import os
+import logging
 from flask import Flask, render_template, request, jsonify, session, redirect, url_for
 from dotenv import load_dotenv
 from spotify_client import SpotifyClient
@@ -11,12 +12,39 @@ from sequencer import PlaylistSequencer, SequencerError
 # Load environment variables
 load_dotenv()
 
+# Configure logging so spotify_client warnings show up
+logging.basicConfig(level=logging.DEBUG)
+
 app = Flask(__name__)
 app.secret_key = os.getenv("FLASK_SECRET_KEY", "dev-secret-key-change-in-production")
 
 # Initialize components
 db = Database()
 spotify_client = SpotifyClient()
+
+
+def get_spotify_client():
+    """
+    Create an authenticated Spotify client from whichever auth method is available.
+    Priority: cookie/token auth > OAuth.
+    Returns (spotipy.Spotify, auth_method) or (None, None).
+    """
+    # Check cookie/token auth first
+    access_token = session.get('spotify_access_token')
+    if access_token:
+        method = session.get('auth_method', 'token')
+        return spotify_client.get_client_from_token(access_token), method
+
+    # Fall back to OAuth
+    token_info = session.get('token_info')
+    if token_info and spotify_client.oauth_available:
+        auth_manager = spotify_client.get_auth_manager()
+        token_info = auth_manager.validate_token(token_info)
+        if token_info:
+            session['token_info'] = token_info
+            return spotify_client.get_client(auth_manager), 'oauth'
+
+    return None, None
 
 
 @app.route('/')
@@ -28,6 +56,8 @@ def index():
 @app.route('/auth/login')
 def auth_login():
     """Initiate Spotify OAuth flow."""
+    if not spotify_client.oauth_available:
+        return "OAuth not configured. Use cookie or token auth instead.", 400
     auth_manager = spotify_client.get_auth_manager()
     auth_url = auth_manager.get_authorize_url()
     return redirect(auth_url)
@@ -48,21 +78,71 @@ def callback():
     return "Authorization failed", 400
 
 
+@app.route('/auth/cookie', methods=['POST'])
+def auth_cookie():
+    """Authenticate using an sp_dc cookie from open.spotify.com."""
+    data = request.json
+    sp_dc = data.get('sp_dc', '').strip()
+    
+    if not sp_dc:
+        return jsonify({'error': 'sp_dc cookie value is required'}), 400
+    
+    try:
+        access_token = spotify_client.get_token_from_cookie(sp_dc)
+        session['spotify_access_token'] = access_token
+        session['auth_method'] = 'cookie'
+        # Store the sp_dc so we can re-exchange if the token expires
+        session['sp_dc'] = sp_dc
+        return jsonify({'authenticated': True, 'method': 'cookie'})
+    except ValueError as e:
+        return jsonify({'error': str(e)}), 400
+    except Exception as e:
+        return jsonify({'error': f'Cookie auth failed: {str(e)}'}), 500
+
+
+@app.route('/auth/token', methods=['POST'])
+def auth_token():
+    """Authenticate using a raw Spotify access token."""
+    data = request.json
+    access_token = data.get('access_token', '').strip()
+    
+    if not access_token:
+        return jsonify({'error': 'Access token is required'}), 400
+    
+    session['spotify_access_token'] = access_token
+    session['auth_method'] = 'token'
+    return jsonify({'authenticated': True, 'method': 'token'})
+
+
+@app.route('/auth/logout', methods=['POST'])
+def auth_logout():
+    """Clear all auth state."""
+    session.pop('token_info', None)
+    session.pop('spotify_access_token', None)
+    session.pop('auth_method', None)
+    session.pop('sp_dc', None)
+    return jsonify({'authenticated': False})
+
+
 @app.route('/auth/status')
 def auth_status():
-    """Check if user is authenticated."""
-    auth_manager = spotify_client.get_auth_manager()
-    
-    # Check if we have a valid token
+    """Check if user is authenticated via any method."""
+    # Check cookie/token auth
+    access_token = session.get('spotify_access_token')
+    if access_token:
+        method = session.get('auth_method', 'token')
+        return jsonify({'authenticated': True, 'method': method, 'oauth_available': spotify_client.oauth_available})
+
+    # Check OAuth auth
     token_info = session.get('token_info')
-    if token_info:
-        # Validate and refresh if needed
+    if token_info and spotify_client.oauth_available:
+        auth_manager = spotify_client.get_auth_manager()
         token_info = auth_manager.validate_token(token_info)
         if token_info:
             session['token_info'] = token_info
-            return jsonify({'authenticated': True})
+            return jsonify({'authenticated': True, 'method': 'oauth', 'oauth_available': spotify_client.oauth_available})
     
-    return jsonify({'authenticated': False})
+    return jsonify({'authenticated': False, 'oauth_available': spotify_client.oauth_available})
 
 
 @app.route('/api/load_project', methods=['GET'])
@@ -83,15 +163,11 @@ def fetch_playlist():
     if not playlist_id:
         return jsonify({'error': 'Playlist ID required'}), 400
     
-    # Check authentication
-    token_info = session.get('token_info')
-    if not token_info:
+    sp, method = get_spotify_client()
+    if not sp:
         return jsonify({'error': 'Not authenticated'}), 401
     
     try:
-        auth_manager = spotify_client.get_auth_manager()
-        sp = spotify_client.get_client(auth_manager)
-        
         playlist_data = spotify_client.fetch_playlist_tracks(sp, playlist_id)
         
         # Save to database
@@ -173,15 +249,11 @@ def create_playlist():
     if not tracks:
         return jsonify({'error': 'No tracks to upload'}), 400
     
-    # Check authentication
-    token_info = session.get('token_info')
-    if not token_info:
+    sp, method = get_spotify_client()
+    if not sp:
         return jsonify({'error': 'Not authenticated'}), 401
     
     try:
-        auth_manager = spotify_client.get_auth_manager()
-        sp = spotify_client.get_client(auth_manager)
-        
         # Extract URIs in order
         track_uris = [track['uri'] for track in tracks]
         
