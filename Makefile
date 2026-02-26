@@ -18,7 +18,7 @@ run:
 		cp .env.example .env; \
 		echo "Please edit .env with your Spotify credentials before the app will work!"; \
 	fi
-	docker run -d \
+	docker run \
 		--name $(CONTAINER_NAME) \
 		-p 5000:5000 \
 		-v $(PWD)/.env:/app/.env \

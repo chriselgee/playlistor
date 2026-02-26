@@ -135,10 +135,10 @@ class SpotifyClient:
         Returns:
             Dictionary with playlist metadata and tracks
         """
-        # Get playlist details
-        playlist = sp.playlist(playlist_id)
-        
-        # Fetch all tracks (handle pagination)
+        # Fetch all tracks first — the /tracks endpoint works with all token
+        # types (including web-player and cookie-based tokens), whereas the
+        # playlist-details endpoint (/playlists/{id}) can return 404 for
+        # non-OAuth tokens.
         tracks = []
         results = sp.playlist_tracks(playlist_id)
         
@@ -161,10 +161,22 @@ class SpotifyClient:
             else:
                 break
         
+        # Try to get playlist metadata (name, description). This may fail
+        # with a 404 for web-player / cookie-based tokens, so fall back to
+        # sensible defaults.
+        playlist_name = playlist_id
+        playlist_description = ''
+        try:
+            playlist = sp.playlist(playlist_id, fields='id,name,description')
+            playlist_name = playlist.get('name', playlist_id)
+            playlist_description = playlist.get('description', '')
+        except Exception as e:
+            logger.warning(f"Could not fetch playlist metadata (using ID as name): {e}")
+        
         return {
-            'id': playlist['id'],
-            'name': playlist['name'],
-            'description': playlist.get('description', ''),
+            'id': playlist_id,
+            'name': playlist_name,
+            'description': playlist_description,
             'tracks': tracks,
             'total_tracks': len(tracks)
         }
