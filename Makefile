@@ -20,7 +20,7 @@ run:
 	fi
 	docker run \
 		--name $(CONTAINER_NAME) \
-		-p 5000:5000 \
+		-p 8888:5000 \
 		-v $(PWD)/.env:/app/.env \
 		-v $(PWD)/data:/app/data \
 		-v $(PWD)/.spotify_cache:/app/.spotify_cache \

@@ -125,39 +125,90 @@ class PlaylistSequencer:
     
     def _fill_gap(self, target_duration_seconds: float) -> Tuple[List[Dict[str, Any]], float]:
         """
-        Fill a time gap with random tracks.
-        
+        Fill a time gap by selecting tracks whose combined duration best matches the target.
+
+        Uses dynamic programming (subset-sum) to find an optimal combination of tracks
+        rather than random selection, so that anchors reliably land at their target times.
+
         Args:
             target_duration_seconds: Desired duration in seconds
-            
+
         Returns:
             Tuple of (list of tracks, actual duration in seconds)
         """
-        if not self.available_tracks:
+        if not self.available_tracks or target_duration_seconds <= 0:
             return [], 0.0
-        
+
+        tolerance_s = self.TOLERANCE_SECONDS
+        target_s = int(round(target_duration_seconds))
+
+        # Track durations in whole seconds (adequate given ±tolerance)
+        durations_s = [max(1, int(round(t['duration_ms'] / 1000))) for t in self.available_tracks]
+        n = len(durations_s)
+        total_available_s = sum(durations_s)
+
+        # If every available track combined can't reach the lower tolerance bound,
+        # use them all — it's the closest we can get
+        if total_available_s <= target_s - tolerance_s:
+            selected = self.available_tracks[:]
+            self.available_tracks = []
+            random.shuffle(selected)
+            return selected, sum(t['duration_ms'] for t in selected) / 1000
+
+        # DP upper bound: target + tolerance, capped by total available
+        max_sum = min(target_s + tolerance_s, total_available_s)
+
+        # Subset-sum DP: dp[s] == 1 iff sum s is achievable using a subset of tracks
+        dp = bytearray(max_sum + 1)
+        dp[0] = 1
+        # Backtracking table: choice[s] = (track_index, previous_sum)
+        choice = [None] * (max_sum + 1)
+
+        for i in range(n):
+            dur = durations_s[i]
+            if dur > max_sum:
+                continue
+            # Iterate in reverse so each track is used at most once
+            for s in range(max_sum, dur - 1, -1):
+                if not dp[s] and dp[s - dur]:
+                    dp[s] = 1
+                    choice[s] = (i, s - dur)
+
+        # Find the achievable sum closest to the target
+        best_sum = None
+        best_diff = float('inf')
+        for s in range(max_sum + 1):
+            if dp[s]:
+                diff = abs(s - target_s)
+                if diff < best_diff:
+                    best_diff = diff
+                    best_sum = s
+
+        if best_sum is None or best_sum == 0:
+            return [], 0.0
+
+        # Backtrack to identify which tracks were selected
+        selected_indices = set()
+        s = best_sum
+        while choice[s] is not None:
+            idx, prev_s = choice[s]
+            selected_indices.add(idx)
+            s = prev_s
+
+        # Partition into selected and remaining
         selected = []
-        total_duration = 0.0
-        target_duration_ms = target_duration_seconds * 1000
-        
-        # Shuffle available tracks
-        random.shuffle(self.available_tracks)
-        
-        # Greedily fill the gap
-        while self.available_tracks and total_duration < target_duration_ms:
-            track = self.available_tracks.pop(0)
-            
-            # Check if adding this track would exceed target by more than tolerance
-            new_total = total_duration + track['duration_ms']
-            if new_total <= target_duration_ms + (self.TOLERANCE_SECONDS * 1000):
+        remaining = []
+        for i, track in enumerate(self.available_tracks):
+            if i in selected_indices:
                 selected.append(track)
-                total_duration = new_total
             else:
-                # Would exceed tolerance, put track back for later
-                self.available_tracks.append(track)
-                break
-        
-        return selected, total_duration / 1000
+                remaining.append(track)
+
+        self.available_tracks = remaining
+        random.shuffle(selected)  # Randomise order within the filled segment
+
+        actual_duration_ms = sum(t['duration_ms'] for t in selected)
+        return selected, actual_duration_ms / 1000
     
     def _add_metadata(self, tracks: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
         """Add cumulative time metadata to tracks."""
