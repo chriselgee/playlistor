@@ -61,7 +61,10 @@
                 <p class="help-text">Specify songs to play at exact times. First anchor is from playlist start, others are relative to previous anchor.</p>
                 
                 <div class="anchor-form">
-                    <input type="text" id="anchor-song-name" placeholder="Song name (must match exactly)">
+                    <div class="autocomplete-wrapper">
+                        <input type="text" id="anchor-song-name" placeholder="Song name (start typing to search)" autocomplete="off">
+                        <div id="song-suggestions" class="suggestions-dropdown"></div>
+                    </div>
                     <div class="time-inputs">
                         <input type="number" id="anchor-hours" min="0" placeholder="Hours" value="0">
                         <span>:</span>

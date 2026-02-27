@@ -85,7 +85,17 @@ function setupEventListeners() {
     tokenAuthBtn.addEventListener('click', connectWithToken);
 
     fetchBtn.addEventListener('click', fetchPlaylist);
-    
+
+    // Song name autocomplete
+    anchorSongName.addEventListener('input', handleSongAutocomplete);
+    anchorSongName.addEventListener('keydown', handleSuggestionKeydown);
+    document.addEventListener('click', (e) => {
+        const suggestions = document.getElementById('song-suggestions');
+        if (!anchorSongName.contains(e.target) && !suggestions.contains(e.target)) {
+            suggestions.style.display = 'none';
+        }
+    });
+
     addAnchorBtn.addEventListener('click', addAnchor);
     clearAnchorsBtn.addEventListener('click', clearAnchors);
     sequenceBtn.addEventListener('click', generateSequence);
@@ -289,6 +299,86 @@ async function fetchPlaylist() {
     } finally {
         fetchBtn.disabled = false;
         fetchBtn.textContent = 'Fetch Playlist';
+    }
+}
+
+let activeSuggestionIndex = -1;
+
+function handleSongAutocomplete() {
+    const query = anchorSongName.value.trim().toLowerCase();
+    const suggestions = document.getElementById('song-suggestions');
+    activeSuggestionIndex = -1;
+
+    if (!query || !currentTracks || currentTracks.length === 0) {
+        suggestions.style.display = 'none';
+        return;
+    }
+
+    const matches = currentTracks.filter(t =>
+        t.name.toLowerCase().includes(query)
+    ).slice(0, 10);
+
+    if (matches.length === 0) {
+        suggestions.style.display = 'none';
+        return;
+    }
+
+    suggestions.innerHTML = '';
+    matches.forEach((track, i) => {
+        const div = document.createElement('div');
+        div.className = 'suggestion-item';
+        div.dataset.index = i;
+
+        const nameSpan = document.createElement('span');
+        nameSpan.className = 'suggestion-name';
+        nameSpan.textContent = track.name;
+
+        const artistSpan = document.createElement('span');
+        artistSpan.className = 'suggestion-artist';
+        artistSpan.textContent = track.artist;
+
+        div.appendChild(nameSpan);
+        div.appendChild(artistSpan);
+
+        div.addEventListener('mousedown', (e) => {
+            e.preventDefault();
+            anchorSongName.value = track.name;
+            suggestions.style.display = 'none';
+        });
+
+        suggestions.appendChild(div);
+    });
+
+    suggestions.style.display = 'block';
+}
+
+function handleSuggestionKeydown(e) {
+    const suggestions = document.getElementById('song-suggestions');
+    const items = suggestions.querySelectorAll('.suggestion-item');
+    if (suggestions.style.display === 'none' || items.length === 0) return;
+
+    if (e.key === 'ArrowDown') {
+        e.preventDefault();
+        activeSuggestionIndex = Math.min(activeSuggestionIndex + 1, items.length - 1);
+        updateActiveSuggestion(items);
+    } else if (e.key === 'ArrowUp') {
+        e.preventDefault();
+        activeSuggestionIndex = Math.max(activeSuggestionIndex - 1, 0);
+        updateActiveSuggestion(items);
+    } else if (e.key === 'Enter' && activeSuggestionIndex >= 0) {
+        e.preventDefault();
+        items[activeSuggestionIndex].dispatchEvent(new MouseEvent('mousedown'));
+    } else if (e.key === 'Escape') {
+        suggestions.style.display = 'none';
+    }
+}
+
+function updateActiveSuggestion(items) {
+    items.forEach((item, i) => {
+        item.classList.toggle('active', i === activeSuggestionIndex);
+    });
+    if (activeSuggestionIndex >= 0) {
+        items[activeSuggestionIndex].scrollIntoView({ block: 'nearest' });
     }
 }
 
