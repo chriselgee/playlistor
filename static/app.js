@@ -3,6 +3,7 @@ let currentPlaylist = null;
 let currentTracks = [];
 let anchors = [];
 let sequencedTracks = [];
+let crossfadeSeconds = 5;
 
 // DOM Elements
 const loginBtn = document.getElementById('login-btn');
@@ -39,6 +40,9 @@ const reshuffleBtn = document.getElementById('reshuffle-btn');
 const newPlaylistName = document.getElementById('new-playlist-name');
 const uploadBtn = document.getElementById('upload-btn');
 const uploadResult = document.getElementById('upload-result');
+
+const crossfadeSlider = document.getElementById('crossfade-seconds');
+const crossfadeValue = document.getElementById('crossfade-value');
 
 const errorToast = document.getElementById('error-toast');
 const successToast = document.getElementById('success-toast');
@@ -88,6 +92,12 @@ function setupEventListeners() {
     reshuffleBtn.addEventListener('click', generateSequence);
     
     uploadBtn.addEventListener('click', uploadPlaylist);
+
+    // Crossfade slider
+    crossfadeSlider.addEventListener('input', () => {
+        crossfadeSeconds = parseInt(crossfadeSlider.value);
+        crossfadeValue.textContent = crossfadeSeconds;
+    });
 }
 
 async function checkAuthStatus() {
@@ -380,7 +390,8 @@ async function generateSequence() {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
                 tracks: currentTracks,
-                anchors: anchors
+                anchors: anchors,
+                crossfade_seconds: crossfadeSeconds
             })
         });
         
@@ -408,8 +419,15 @@ function displaySequence(tracks) {
     sequencePlaceholder.style.display = 'none';
     sequenceContainer.style.display = 'block';
     
-    // Calculate total duration
-    const total = tracks.reduce((sum, t) => sum + t.duration_ms, 0);
+    // Calculate total duration accounting for crossfade
+    let total = 0;
+    tracks.forEach((t, i) => {
+        if (i < tracks.length - 1) {
+            total += Math.max(t.duration_ms - crossfadeSeconds * 1000, 1000);
+        } else {
+            total += t.duration_ms;
+        }
+    });
     totalDuration.textContent = formatMilliseconds(total);
     
     // Render tracks
@@ -511,9 +529,13 @@ function handleDragEnd() {
 
 function updateCumulativeTimes() {
     let cumulative = 0;
-    sequencedTracks.forEach(track => {
+    sequencedTracks.forEach((track, i) => {
         track.cumulative_start_time = cumulative;
-        cumulative += track.duration_ms / 1000;
+        if (i < sequencedTracks.length - 1) {
+            cumulative += Math.max(track.duration_ms / 1000 - crossfadeSeconds, 1);
+        } else {
+            cumulative += track.duration_ms / 1000;
+        }
     });
 }
 

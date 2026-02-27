@@ -190,12 +190,13 @@ def sequence_playlist():
     data = request.json
     tracks = data.get('tracks', [])
     anchors = data.get('anchors', [])
+    crossfade_seconds = data.get('crossfade_seconds', PlaylistSequencer.DEFAULT_CROSSFADE_SECONDS)
     
     if not tracks:
         return jsonify({'error': 'No tracks provided'}), 400
     
     try:
-        sequencer = PlaylistSequencer(tracks)
+        sequencer = PlaylistSequencer(tracks, crossfade_seconds=crossfade_seconds)
         sequenced_tracks = sequencer.sequence_playlist(anchors)
         
         # Save to database

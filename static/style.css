@@ -219,6 +219,35 @@ input:focus {
     gap: 10px;
 }
 
+.crossfade-control {
+    margin-top: 15px;
+    padding: 12px 16px;
+    background: #f7fafc;
+    border-radius: 8px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    flex-wrap: wrap;
+}
+
+.crossfade-control label {
+    white-space: nowrap;
+    font-weight: 500;
+}
+
+.crossfade-control input[type="range"] {
+    flex: 1;
+    min-width: 120px;
+    accent-color: #667eea;
+}
+
+.crossfade-control .help-text {
+    flex-basis: 100%;
+    margin: 0;
+    font-size: 0.85em;
+    color: #888;
+}
+
 .sequence-stats {
     display: flex;
     justify-content: space-between;

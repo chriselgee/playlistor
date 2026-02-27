@@ -78,6 +78,12 @@
                     <button id="sequence-btn" class="btn btn-primary" disabled>Generate Sequence</button>
                     <button id="clear-anchors-btn" class="btn btn-secondary">Clear Anchors</button>
                 </div>
+
+                <div class="crossfade-control">
+                    <label for="crossfade-seconds">Crossfade: <strong id="crossfade-value">5</strong>s</label>
+                    <input type="range" id="crossfade-seconds" min="0" max="12" step="1" value="5">
+                    <span class="help-text">Songs overlap by this many seconds. Set to 0 to disable.</span>
+                </div>
             </section>
 
             <!-- Step 3: Review & Edit Sequence -->

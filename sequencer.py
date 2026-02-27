@@ -13,16 +13,31 @@ class SequencerError(Exception):
 
 class PlaylistSequencer:
     TOLERANCE_SECONDS = 5  # ±5 seconds tolerance
+    DEFAULT_CROSSFADE_SECONDS = 5
     
-    def __init__(self, tracks: List[Dict[str, Any]]):
+    def __init__(self, tracks: List[Dict[str, Any]], crossfade_seconds: float = None):
         """
         Initialize sequencer with source tracks.
         
         Args:
             tracks: List of track dictionaries from Spotify
+            crossfade_seconds: Overlap between consecutive tracks in seconds.
+                               Defaults to DEFAULT_CROSSFADE_SECONDS.
         """
         self.source_tracks = tracks.copy()
         self.available_tracks = tracks.copy()
+        self.crossfade_seconds = crossfade_seconds if crossfade_seconds is not None else self.DEFAULT_CROSSFADE_SECONDS
+    
+    def _effective_duration_s(self, track: Dict[str, Any]) -> float:
+        """Return the time a track occupies in the timeline accounting for crossfade.
+        
+        Every track except the very last one in the playlist starts fading out
+        `crossfade_seconds` before its natural end, so the next track begins
+        earlier.  For sequencing purposes each track advances the clock by
+        `duration - crossfade`.
+        """
+        raw = track['duration_ms'] / 1000
+        return max(raw - self.crossfade_seconds, 1.0)
     
     def sequence_playlist(self, anchors: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
         """
@@ -104,7 +119,7 @@ class PlaylistSequencer:
             
             # Add anchor track
             sequenced.append(anchor_track)
-            current_time = target_time + (anchor_track['duration_ms'] / 1000)
+            current_time = target_time + self._effective_duration_s(anchor_track)
         
         # Add remaining tracks after last anchor
         if self.available_tracks:
@@ -142,8 +157,8 @@ class PlaylistSequencer:
         tolerance_s = self.TOLERANCE_SECONDS
         target_s = int(round(target_duration_seconds))
 
-        # Track durations in whole seconds (adequate given ±tolerance)
-        durations_s = [max(1, int(round(t['duration_ms'] / 1000))) for t in self.available_tracks]
+        # Track durations in whole seconds, accounting for crossfade overlap
+        durations_s = [max(1, int(round(self._effective_duration_s(t)))) for t in self.available_tracks]
         n = len(durations_s)
         total_available_s = sum(durations_s)
 
@@ -153,7 +168,7 @@ class PlaylistSequencer:
             selected = self.available_tracks[:]
             self.available_tracks = []
             random.shuffle(selected)
-            return selected, sum(t['duration_ms'] for t in selected) / 1000
+            return selected, sum(self._effective_duration_s(t) for t in selected)
 
         # DP upper bound: target + tolerance, capped by total available
         max_sum = min(target_s + tolerance_s, total_available_s)
@@ -207,18 +222,24 @@ class PlaylistSequencer:
         self.available_tracks = remaining
         random.shuffle(selected)  # Randomise order within the filled segment
 
-        actual_duration_ms = sum(t['duration_ms'] for t in selected)
-        return selected, actual_duration_ms / 1000
+        actual_duration_s = sum(self._effective_duration_s(t) for t in selected)
+        return selected, actual_duration_s
     
     def _add_metadata(self, tracks: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
-        """Add cumulative time metadata to tracks."""
+        """Add cumulative time metadata to tracks, accounting for crossfade."""
         cumulative_time = 0
         result = []
+        last_index = len(tracks) - 1
         
-        for track in tracks:
+        for i, track in enumerate(tracks):
             track_with_meta = track.copy()
             track_with_meta['cumulative_start_time'] = cumulative_time
-            cumulative_time += track['duration_ms'] / 1000
+            track_with_meta['crossfade_seconds'] = self.crossfade_seconds
+            if i < last_index:
+                cumulative_time += self._effective_duration_s(track)
+            else:
+                # Last track plays its full duration (no crossfade into nothing)
+                cumulative_time += track['duration_ms'] / 1000
             result.append(track_with_meta)
         
         return result
